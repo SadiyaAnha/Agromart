@@ -1,13 +1,7 @@
--- ============================================================
--- AGROMART DATABASE FIXES
--- Run this entire script in phpMyAdmin > SQL tab
--- ============================================================
 
 USE agromart;
 
--- ============================================================
--- STEP 1: CREATE Cart table (was missing from original schema)
--- ============================================================
+--
 CREATE TABLE IF NOT EXISTS Cart (
   CartID INT AUTO_INCREMENT PRIMARY KEY,
   UserCustomerID INT NOT NULL,
@@ -23,53 +17,34 @@ CREATE TABLE IF NOT EXISTS Cart (
   FOREIGN KEY (ShopID) REFERENCES Shop(ShopID) ON DELETE SET NULL
 );
 
--- ============================================================
--- STEP 2: Ensure PreOrderRequest has ListingID column
--- ============================================================
--- Add ListingID if it does not already exist
+
 ALTER TABLE PreOrderRequest
   ADD COLUMN IF NOT EXISTS ListingID INT DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS ItemID INT DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS ProductID INT DEFAULT NULL;
 
--- Add foreign key for ListingID if not already present (safe via IF NOT EXISTS workaround)
--- (MySQL 8.0+ supports ADD CONSTRAINT IF NOT EXISTS but older versions don't; use try/catch in app)
--- You can skip the FK if you get an error — the column is more important.
+
 ALTER TABLE PreOrderRequest
   MODIFY COLUMN ListingID INT DEFAULT NULL;
 
--- ============================================================
--- STEP 3: Fix Items table columns
--- Some databases have `FruitsVegetables` instead of `Fruits` and `Vegetables`
--- ============================================================
+
 ALTER TABLE Items DROP COLUMN IF EXISTS FruitsVegetables;
 ALTER TABLE Items ADD COLUMN IF NOT EXISTS Fruits BOOLEAN DEFAULT FALSE;
 ALTER TABLE Items ADD COLUMN IF NOT EXISTS Vegetables BOOLEAN DEFAULT FALSE;
 
--- ============================================================
--- STEP 4: Fix Order table — InvoiceID should default to OrderID
--- and InvoiceDate should be set automatically
--- ============================================================
--- Make sure InvoiceID column exists and allow it to be auto-set
+
 ALTER TABLE `Order`
   MODIFY COLUMN InvoiceID VARCHAR(100) DEFAULT NULL,
   MODIFY COLUMN InvoiceDate DATETIME DEFAULT NULL;
 
--- ============================================================
--- STEP 5: Fix existing orders that have NULL InvoiceID/InvoiceDate
--- ============================================================
+
 UPDATE `Order`
 SET
   InvoiceID = CAST(OrderID AS CHAR),
   InvoiceDate = created_at
 WHERE InvoiceID IS NULL OR InvoiceDate IS NULL;
 
--- ============================================================
--- STEP 6: Remove AdminID column from Farmer and Customer tables
--- (Drop FK first, then column)
--- ============================================================
 
--- Remove AdminID foreign key from Farmer
 SET @fk_farmer = (
   SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
   WHERE TABLE_SCHEMA = 'agromart'

@@ -410,8 +410,7 @@ app.post('/api/orders', async (req, res) => {
 
     const [preorderCartRows] = await pool.query(
       `SELECT c.CartID, c.PreOrderRequestID, c.ItemID, c.Quantity, c.PricePerUnit,
-              pr.ListingID, pr.Status as requestStatus, pr.ItemID as requestItemID,
-              l.ItemID as listingItemID,
+              pr.ListingID, pr.Status as requestStatus, 
               l.ShopID as listingShopID, l.MaxQuantity
        FROM Cart c
        JOIN PreOrderRequest pr ON c.PreOrderRequestID = pr.PreOrderID
@@ -456,7 +455,7 @@ app.post('/api/orders', async (req, res) => {
         preOrderRequestId: row.PreOrderRequestID,
         listingId: row.ListingID,
         requestStatus: row.requestStatus,
-        itemId: row.ItemID || row.requestItemID || row.listingItemID || null,
+        itemId: row.ItemID ||  null,
         quantity,
         price,
         maxQuantity: Number(row.MaxQuantity)
@@ -788,6 +787,15 @@ app.put('/api/shops/:sellerId/preorder-requests/:requestId', async (req, res) =>
         shopId = listingLookup.length > 0 ? listingLookup[0].ShopID : null;
       }
 
+      // Enforce single-shop cart per customer for preorders too
+      if (shopId) {
+        const [existingCart] = await pool.query('SELECT ShopID FROM Cart WHERE UserCustomerID = ? LIMIT 1', [customerId]);
+        if (existingCart.length > 0 && existingCart[0].ShopID && String(existingCart[0].ShopID) !== String(shopId)) {
+          // Clear old cart completely because it's from a different shop
+          await pool.query('DELETE FROM Cart WHERE UserCustomerID = ?', [customerId]);
+        }
+      }
+
       // Add to Cart with PreOrderRequestID link
       await pool.query(
         'INSERT INTO Cart (UserCustomerID, PreOrderRequestID, ItemID, Quantity, PricePerUnit, ShopID) VALUES (?, ?, NULL, ?, ?, ?)',
@@ -849,7 +857,7 @@ app.get('/api/cart/:customerId', async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT c.CartID as id, c.UserCustomerID, c.PreOrderRequestID, c.ItemID as itemId, c.Quantity as quantity, c.PricePerUnit as pricePerUnit, c.ShopID,
-              i.Name as itemName, i.Category,
+              i.Name as itemName, i.Category, i.Stock as itemStock,
               pr.UserFarmerID as farmerId, pr.DeliveryMonth
        FROM Cart c
        LEFT JOIN Items i ON c.ItemID = i.ItemID
@@ -891,6 +899,15 @@ app.post('/api/cart/:customerId/add', async (req, res) => {
     // Get shop info
     const [itemRows] = await pool.query('SELECT ShopID FROM Items WHERE ItemID = ?', [itemId]);
     const shopId = itemRows.length > 0 ? itemRows[0].ShopID : null;
+
+    // Enforce single-shop cart per customer
+    if (shopId) {
+      const [existingCart] = await pool.query('SELECT ShopID FROM Cart WHERE UserCustomerID = ? LIMIT 1', [customerId]);
+      if (existingCart.length > 0 && existingCart[0].ShopID && existingCart[0].ShopID !== shopId) {
+        // Clear old cart completely because it's from a different shop
+        await pool.query('DELETE FROM Cart WHERE UserCustomerID = ?', [customerId]);
+      }
+    }
 
     // Add to cart
     const [result] = await pool.query(
