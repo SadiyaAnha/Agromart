@@ -293,7 +293,7 @@ app.post('/api/shops/:sellerId/items', async (req, res) => {
   const { name, category, price, stock, productId } = req.body;
   try {
     // Get farmer's shop
-    const [farmer] = await pool.query('SELECT ShopID FROM Farmer WHERE UserFarmerID = ?', [sellerId]);
+    const [farmer] = await pool.query('SELECT ShopID FROM Farmer WHERE UserFarmerID = ?', [sellerId]); // myshop 
     if (farmer.length === 0) return res.status(404).json({ error: 'Farmer not found' });
 
     let resolvedName = name;
@@ -302,7 +302,7 @@ app.post('/api/shops/:sellerId/items', async (req, res) => {
 
     if (resolvedProductId) {
       const [catalogRows] = await pool.query(
-        'SELECT ProductID, Name, Category FROM ProductCatalog WHERE ProductID = ?',
+        'SELECT ProductID, Name, Category FROM ProductCatalog WHERE ProductID = ?',      // catalog option
         [resolvedProductId]
       );
       if (catalogRows.length === 0) {
@@ -330,7 +330,7 @@ app.post('/api/shops/:sellerId/items', async (req, res) => {
     const [result] = await pool.query(
       'INSERT INTO Items (ProductID, Name, price, Stock, ShopID, Category, Fruits, Vegetables, Grains, Meat) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [resolvedProductId, resolvedName, price, normalizedStock, farmer[0].ShopID, resolvedCategory, fruits, vegetables, grains, meat]
-    );
+    );    // inset new inventory product to items table
     res.json({ 
       id: result.insertId, 
       name: resolvedName, 
@@ -612,12 +612,12 @@ app.get('/api/preorder-listings', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
+//preorder listing farmer
 app.post('/api/shops/:sellerId/preorder-listings', async (req, res) => {
   const { sellerId } = req.params;
   const { price, maxQuantity, deliveryMonth, productId } = req.body;
   try {
-    const [farmer] = await pool.query('SELECT ShopID FROM Farmer WHERE UserFarmerID = ?', [sellerId]);
+    const [farmer] = await pool.query('SELECT ShopID FROM Farmer WHERE UserFarmerID = ?', [sellerId]); //myshop
     if (farmer.length === 0) return res.status(404).json({ error: 'Farmer not found' });
 
     let resolvedProductId = Number.isFinite(Number(productId)) && Number(productId) > 0 ? Number(productId) : null;
@@ -632,7 +632,7 @@ app.post('/api/shops/:sellerId/preorder-listings', async (req, res) => {
     if (catalogRows.length === 0) return res.status(404).json({ error: 'Catalog item not found' });
 
     const [existingListing] = await pool.query(
-      'SELECT ListingID FROM PreOrderListing WHERE ShopID = ? AND ProductID = ? AND Active = TRUE LIMIT 1',
+      'SELECT ListingID FROM PreOrderListing WHERE ShopID = ? AND ProductID = ? AND Active = TRUE LIMIT 1', //prevent duplicate item
       [farmer[0].ShopID, resolvedProductId]
     );
     if (existingListing.length > 0) {
@@ -655,7 +655,7 @@ app.post('/api/shops/:sellerId/preorder-listings', async (req, res) => {
     const [result] = await pool.query(
       'INSERT INTO PreOrderListing (ShopID, ProductID, Category, Price, MaxQuantity, DeliveryMonth, Active) VALUES (?, ?, ?, ?, ?, ?, TRUE)',
       [farmer[0].ShopID, resolvedProductId, resolvedCategory || 'Uncategorized', price, maxQuantity, deliveryMonth || null]
-    );
+    );// add to preorderlisting 
 
     res.json({
       id: result.insertId,
@@ -683,7 +683,7 @@ app.post('/api/preorder-requests', async (req, res) => {
     const [listing] = await pool.query(
       'SELECT ListingID, MaxQuantity, Price, DeliveryMonth, ProductID FROM PreOrderListing WHERE ListingID = ? AND ShopID = ? AND Active = TRUE',
       [listingId, farmer[0].ShopID]
-    );
+    );//only get active listing for preorder request
     if (listing.length === 0) return res.status(404).json({ error: 'Listing not available' });
 
     if (Number(quantity) > Number(listing[0].MaxQuantity)) {
@@ -698,7 +698,7 @@ app.post('/api/preorder-requests', async (req, res) => {
       return res.status(400).json({ error: 'Proposed total must be within 100 of the listed total price' });
     }
 
-    const [result] = await pool.query(
+    const [result] = await pool.query(//insert preorder request to table
       `INSERT INTO PreOrderRequest (UserFarmerID, UserCustomerID, ListingID, ProductID, ProposedPrice, Quantity, DeliveryMonth)
        VALUES (?, ?, ?, ?, ?, ?, ?)` ,
       [
@@ -753,7 +753,7 @@ app.put('/api/shops/:sellerId/preorder-requests/:requestId', async (req, res) =>
   const { sellerId, requestId } = req.params;
   const { status } = req.body;
   try {
-    const [request] = await pool.query(
+    const [request] = await pool.query( // verify request belongs to farmer
       'SELECT PreOrderID FROM PreOrderRequest WHERE PreOrderID = ? AND UserFarmerID = ?',
       [requestId, sellerId]
     );
@@ -796,7 +796,7 @@ app.put('/api/shops/:sellerId/preorder-requests/:requestId', async (req, res) =>
         }
       }
 
-      // Add to Cart with PreOrderRequestID link
+      // Add to Cart if accept
       await pool.query(
         'INSERT INTO Cart (UserCustomerID, PreOrderRequestID, ItemID, Quantity, PricePerUnit, ShopID) VALUES (?, ?, NULL, ?, ?, ?)',
         [customerId, requestId, quantity, pricePerUnit, shopId]
